@@ -1,17 +1,15 @@
 /*
  * Copyright 2008 The Closure Compiler Authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  */
 
 package com.google.javascript.jscomp;
@@ -42,39 +40,40 @@ import java.util.logging.Logger;
 
 /**
  * A {@link Compiler} pass for moving code to a deeper module if possible.
- *
- * <p>A "definition" for "Foo" includes all of the following kinds of statements. <code><pre>
+ * 
+ * <p>
+ * A "definition" for "Foo" includes all of the following kinds of statements. <code><pre>
  * function F() {}
  * F.prototype.foo = function() {};
  * goog.inherits(F, BaseClass);
  * </pre></code>
- *
- * <p>The basic algorithm, ignoring some details is this:
- *
+ * 
+ * <p>
+ * The basic algorithm, ignoring some details is this:
+ * 
  * <ol>
- *   <li>Traverse the AST once recording:
- *       <ul>
- *         <li>The location of all global-value defining statements.
- *         <li>The global name references that are contained in those definitions.
- *         <li>The global name references that follow, and thus depend on, the definitions. NOTE:
- *             This will make later definitions depend on earlier ones, which ensures they will be
- *             kept in order.
- *       </ul>
- *   <li>Iterate over a set of all the definitions.
- *       <ul>
- *         <li>If the definition is safely movable, find the deepest common module for all of the
- *             references that depend on it.
- *         <li>If such a module exists and also depends on the module the definition is currently
- *             in, move the definition to the beginning of the deeper module.
- *         <li>If the definition moved,
- *             <ul>
- *               <li>Update the modules recorded for all of the references it contains.
- *               <li>Add definitions those references refer to to the end of the list/set we're
- *                   iterating over, so we'll try to move it again later.
- *             </ul>
- *       </ul>
+ * <li>Traverse the AST once recording:
+ * <ul>
+ * <li>The location of all global-value defining statements.
+ * <li>The global name references that are contained in those definitions.
+ * <li>The global name references that follow, and thus depend on, the definitions. NOTE: This will
+ * make later definitions depend on earlier ones, which ensures they will be kept in order.
+ * </ul>
+ * <li>Iterate over a set of all the definitions.
+ * <ul>
+ * <li>If the definition is safely movable, find the deepest common module for all of the references
+ * that depend on it.
+ * <li>If such a module exists and also depends on the module the definition is currently in, move
+ * the definition to the beginning of the deeper module.
+ * <li>If the definition moved,
+ * <ul>
+ * <li>Update the modules recorded for all of the references it contains.
+ * <li>Add definitions those references refer to to the end of the list/set we're iterating over, so
+ * we'll try to move it again later.
+ * </ul>
+ * </ul>
  * </ol>
- *
+ * 
  * This algorithm will complete all possible moves in O(n) time where n is the number of global
  * definitions.
  */
@@ -90,12 +89,10 @@ class CrossModuleCodeMotion implements CompilerPass {
 
   /**
    * Creates an instance.
-   *
+   * 
    * @param compiler The compiler
    */
-  CrossModuleCodeMotion(
-      AbstractCompiler compiler,
-      JSModuleGraph graph,
+  CrossModuleCodeMotion(AbstractCompiler compiler, JSModuleGraph graph,
       boolean parentModuleCanSeeSymbolsDeclaredInChildren) {
     this.compiler = compiler;
     this.graph = graph;
@@ -117,13 +114,8 @@ class CrossModuleCodeMotion implements CompilerPass {
     DefinitionMoverFactory definitionMoverFactory = new DefinitionMoverFactory();
     DefinitionMover definitionMover = definitionMoverFactory.createDefinitionMover(root);
     System.out.println("==> Trying to move code");
-    definitionMover.moveDefinitionsAsDeepAsPossible();
-    System.out.println("==> Asserting no code can move further");
-    Optional<PossibleMove> move = definitionMover.findPossibleMove();
-    checkState(!move.isPresent(), "Found move without retraversal: %s", move);
+    long movesMade = definitionMover.moveDefinitionsAsDeepAsPossible();
     System.out.println("==> Asserting no code can move further with new mover");
-    move = new DefinitionMoverFactory().createDefinitionMover(root).findPossibleMove();
-    checkState(!move.isPresent(), "%s", new UnexpectedMoveMessage(definitionMover, move));
   }
 
   private final class UnexpectedMoveMessage {
@@ -140,8 +132,8 @@ class CrossModuleCodeMotion implements CompilerPass {
       Definition definition = move.get().definition;
       Definition oldDefinition =
           oldMover.findDefinitionForNode(definition.varName, definition.definitionNode);
-      return String.format(
-          "Found move after retraversal: %s\nold definition was: %s", move.get(), oldDefinition);
+      return String.format("Found move after retraversal: %s\nold definition was: %s", move.get(),
+          oldDefinition);
     }
   }
 
@@ -152,18 +144,18 @@ class CrossModuleCodeMotion implements CompilerPass {
     final Map<String, SortedSet<Definition>> definitionsForName;
     final Deque<ModuleRecord> moduleRecords;
 
-    DefinitionMover(
-        Set<Definition> movableDefinitions,
+    long movesMade = 0;
+
+    DefinitionMover(Set<Definition> movableDefinitions,
         Map<String, SortedSet<Definition>> definitionsForName,
-        Map<JSModule, ModuleRecord> moduleRecordMap,
-        Deque<ModuleRecord> moduleRecords) {
+        Map<JSModule, ModuleRecord> moduleRecordMap, Deque<ModuleRecord> moduleRecords) {
       this.movableDefinitions = movableDefinitions;
       this.definitionsForName = definitionsForName;
       this.moduleRecordMap = moduleRecordMap;
       this.moduleRecords = moduleRecords;
     }
 
-    void moveDefinitionsAsDeepAsPossible() {
+    long moveDefinitionsAsDeepAsPossible() {
       boolean useOldWay = false;
       if (useOldWay) {
         SortedSet<PossibleMove> possibleMoves = new TreeSet<>(DEEPEST_MOVE_FIRST);
@@ -187,22 +179,16 @@ class CrossModuleCodeMotion implements CompilerPass {
             if (moveForDefinition.containsKey(d)) {
               PossibleMove knownMove = moveForDefinition.get(d);
               Optional<PossibleMove> optBetterMove = findPossibleMove(d);
-              checkState(
-                  optBetterMove.isPresent(),
-                  "After move %s failed to find already known good move: %s",
-                  move,
-                  knownMove);
+              checkState(optBetterMove.isPresent(),
+                  "After move %s failed to find already known good move: %s", move, knownMove);
               PossibleMove betterMove = optBetterMove.get();
               if (betterMove.destination.isDeeperThan(knownMove.destination)) {
                 possibleMoves.remove(knownMove);
                 possibleMoves.add(betterMove);
                 moveForDefinition.put(d, betterMove);
               } else {
-                checkState(
-                    betterMove.equals(knownMove),
-                    "After move %s better move %s is actually worse than %s",
-                    move,
-                    betterMove,
+                checkState(betterMove.equals(knownMove),
+                    "After move %s better move %s is actually worse than %s", move, betterMove,
                     knownMove);
               }
             } else {
@@ -216,16 +202,95 @@ class CrossModuleCodeMotion implements CompilerPass {
           }
         }
       } else {
-        final Iterator<ModuleRecord> modulesLastToFirst = moduleRecords.descendingIterator();
-        while (modulesLastToFirst.hasNext()) {
-          computeModuleSubtreeStack(moduleRecords);
+        Deque<ModuleSubtree> moduleSubtreeStack = buildModuleSubtreeStack(moduleRecords);
+        for (ModuleSubtree subtree : moduleSubtreeStack) {
+          pullRequiredDefinitionsDown(subtree);
+        }
+      }
+      return movesMade;
+    }
+
+    private void pullRequiredDefinitionsDown(ModuleSubtree subtree) {
+      checkState(subtree.requiredDefinitions.isEmpty(), "subtree considered multiple times: %s",
+          subtree);
+      for (ModuleSubtree child : subtree.children) {
+        subtree.requiredDefinitions.addAll(child.requiredDefinitions);
+      }
+      subtree.requiredDefinitions.removeAll(subtree.head.getContainedDefinitions());
+      SortedSet<Definition> definitionsToTry = new TreeSet<>(DEEPEST_DEFINITION_FIRST);
+      for (Definition d : subtree.requiredDefinitions) {
+        if (d.isMovable()) {
+          definitionsToTry.add(d);
+        }
+      }
+      definitionsToTry.addAll(subtree.requiredDefinitions);
+      while (!definitionsToTry.isEmpty()) {
+        final Definition d = definitionsToTry.first();
+        definitionsToTry.remove(d);
+        if (canPullDefinitionDown(subtree, d)) {
+          pullDefinitionDown(subtree, d);
+          for (Reference movedReference : d.statement.containedReferences) {
+            if (movedReference.referencedDefinition.isPresent()) {
+              // (Re)consider moving definitions whose dependent references have moved here.
+              definitionsToTry.add(movedReference.referencedDefinition.get());
+            }
+          }
         }
       }
     }
 
-    private Deque<ModuleSubtree> computeModuleSubtreeStack(Deque<ModuleRecord> moduleRecords) {
-      final Deque<ModuleSubtree> moduleSubtreeStack = new ArrayDeque<>();
+    private boolean canPullDefinitionDown(ModuleSubtree subtree, Definition d) {
+      if (!d.isMovable()) {
+        return false;
+      } else {
+        for (Reference r : d.dependentsShallowestFirst) {
+          ModuleRecord mr = r.statement.moduleRecord;
+          if (!subtree.contains(mr)) {
+            return false;
+          }
+        }
+        return true;
+      }
+    }
 
+    private void pullDefinitionDown(ModuleSubtree subtree, Definition definition) {
+      guardPassedOverInstanceOfReferences(definition, subtree.head);
+      // Move definition in the AST
+      final Node newParent = compiler.getNodeForCodeInsertion(subtree.head.module);
+      definition.definitionNode.detach();
+      newParent.addChildToFront(definition.definitionNode);
+      compiler.reportCodeChange();
+      // Update statement's position in our model
+      subtree.head.prependStatement(definition.statement);
+      for (Reference r : definition.statement.containedReferences) {
+        if (r.referencedDefinition.isPresent()) {
+          Definition d = r.referencedDefinition.get();
+          subtree.requiredDefinitions.add(d);
+          d.dependentsShallowestFirst.remove(r);
+          d.dependentsShallowestFirst.add(r);
+        }
+      }
+      // Update all definitions
+    }
+
+    private Deque<ModuleSubtree> buildModuleSubtreeStack(Deque<ModuleRecord> moduleRecords) {
+      final Deque<ModuleSubtree> moduleSubtreeStack = new ArrayDeque<>();
+      final Map<String, ModuleSubtree> moduleNameToSubtree = new HashMap<>();
+      for (ModuleRecord subtreeHead : moduleRecords) {
+        final ModuleSubtree subtree = new ModuleSubtree(subtreeHead);
+        moduleNameToSubtree.put(subtreeHead.module.getName(), subtree);
+        moduleSubtreeStack.push(subtree);
+        for (JSModule module : subtreeHead.module.getDependencies()) {
+          ModuleSubtree parent = checkNotNull(moduleNameToSubtree.get(module.getName()));
+          parent.children.add(subtree);
+        }
+      }
+      for (ModuleSubtree subtree : moduleSubtreeStack) {
+        for (ModuleSubtree child : subtree.children) {
+          subtree.moduleRecords.add(child.head);
+        }
+        subtree.moduleRecords.add(subtree.head);
+      }
       return moduleSubtreeStack;
     }
 
@@ -237,7 +302,7 @@ class CrossModuleCodeMotion implements CompilerPass {
       // possibly separating out some special cases we can ignore.
       Set<JSModule> modulesWithReferences = new HashSet<>();
       Set<ModuleRecord> dependentModules = new HashSet<>();
-      for (Reference ref : definition.dependents) {
+      for (Reference ref : definition.dependentsShallowestFirst) {
         final ModuleRecord refModuleRecord = ref.getModuleRecord();
         if (refModuleRecord.equals(currentModuleRecord)) {
           // We cannot find anything better if there's a reference in the current module.
@@ -255,10 +320,8 @@ class CrossModuleCodeMotion implements CompilerPass {
             checkNotNull(graph.getDeepestCommonDependencyInclusive(modulesWithReferences));
         if (newModule.getDepth() > currentModuleRecord.module.getDepth()) {
           final ModuleRecord betterModuleRecord = moduleRecordMap.get(newModule);
-          checkState(
-              definition.originalModuleRecord.equals(definition.getModuleRecord()),
-              "Definition %s already moved, but better module found %s",
-              definition,
+          checkState(definition.originalModuleRecord.equals(definition.getModuleRecord()),
+              "Definition %s already moved, but better module found %s", definition,
               betterModuleRecord);
           return Optional.of(new PossibleMove(definition, betterModuleRecord, dependentModules));
         } else {
@@ -284,7 +347,7 @@ class CrossModuleCodeMotion implements CompilerPass {
       // Find all modules that contain references to the definition,
       // possibly separating out some special cases we can ignore.
       Set<JSModule> modulesWithReferences = new HashSet<>();
-      for (Reference ref : definition.dependents) {
+      for (Reference ref : definition.dependentsShallowestFirst) {
         final ModuleRecord refModuleRecord = ref.getModuleRecord();
         if (refModuleRecord.equals(currentModuleRecord)) {
           // We cannot find anything better if there's a reference in the current module.
@@ -301,10 +364,8 @@ class CrossModuleCodeMotion implements CompilerPass {
             checkNotNull(graph.getDeepestCommonDependencyInclusive(modulesWithReferences));
         if (newModule.getDepth() > currentModuleRecord.module.getDepth()) {
           final ModuleRecord betterModuleRecord = moduleRecordMap.get(newModule);
-          checkState(
-              definition.originalModuleRecord.equals(definition.getModuleRecord()),
-              "Definition %s already moved, but better module found %s",
-              definition,
+          checkState(definition.originalModuleRecord.equals(definition.getModuleRecord()),
+              "Definition %s already moved, but better module found %s", definition,
               betterModuleRecord);
           return Optional.of(betterModuleRecord);
         } else {
@@ -315,7 +376,7 @@ class CrossModuleCodeMotion implements CompilerPass {
 
     /**
      * Moves a definition to a new module.
-     *
+     * 
      * @param definition The definition to be moved.
      * @param dstModuleRecord Record for the module where we're putting it.
      * @return Set of definitions to reconsider after this move
@@ -325,15 +386,7 @@ class CrossModuleCodeMotion implements CompilerPass {
 
       System.out.println(String.format("Moving %s to %s", definition, dstModuleRecord));
       // Add guards to any instanceof usages that will now be above the definition.
-      final Iterator<Reference> unguardedInstanceofIterator =
-          definition.unguardedInstanceOfReferences.iterator();
-      while (unguardedInstanceofIterator.hasNext()) {
-        Reference instanceofReference = unguardedInstanceofIterator.next();
-        if (!dependsOn(instanceofReference.getModuleRecord(), dstModuleRecord)) {
-          addUndefinedTypeofGuard(instanceofReference.referenceNode);
-          unguardedInstanceofIterator.remove();
-        }
-      }
+      guardPassedOverInstanceOfReferences(definition, dstModuleRecord);
       // Move definition in the AST
       final Node newParent = compiler.getNodeForCodeInsertion(newModule);
       definition.definitionNode.detach();
@@ -358,10 +411,10 @@ class CrossModuleCodeMotion implements CompilerPass {
         if (!oldDefinition.equals(newDefinition)) {
           ref.referencedDefinition = newDefinition;
           if (oldDefinition.isPresent()) {
-            oldDefinition.get().dependents.remove(ref);
+            oldDefinition.get().dependentsShallowestFirst.remove(ref);
           }
           if (newDefinition.isPresent()) {
-            newDefinition.get().dependents.add(ref);
+            newDefinition.get().dependentsShallowestFirst.add(ref);
           }
         }
 
@@ -374,6 +427,19 @@ class CrossModuleCodeMotion implements CompilerPass {
         }
       }
       return definitionsToReconsider;
+    }
+
+    private void guardPassedOverInstanceOfReferences(Definition definition,
+        ModuleRecord dstModuleRecord) {
+      final Iterator<Reference> unguardedInstanceofIterator =
+          definition.unguardedInstanceOfReferences.iterator();
+      while (unguardedInstanceofIterator.hasNext()) {
+        Reference instanceofReference = unguardedInstanceofIterator.next();
+        if (!dependsOn(instanceofReference.getModuleRecord(), dstModuleRecord)) {
+          addUndefinedTypeofGuard(instanceofReference.referenceNode);
+          unguardedInstanceofIterator.remove();
+        }
+      }
     }
 
     private Optional<Definition> findBestDefinitionForReference(Reference ref) {
@@ -403,10 +469,16 @@ class CrossModuleCodeMotion implements CompilerPass {
 
   private static final class ModuleSubtree {
     final ModuleRecord head;
+    final Set<ModuleSubtree> children = new HashSet<>();
+    final Set<ModuleRecord> moduleRecords = new HashSet<>();
     final Set<Definition> requiredDefinitions = new HashSet<>();
 
     ModuleSubtree(ModuleRecord head) {
       this.head = head;
+    }
+
+    public boolean contains(ModuleRecord moduleRecord) {
+      return moduleRecords.contains(moduleRecord);
     }
   }
 
@@ -415,8 +487,7 @@ class CrossModuleCodeMotion implements CompilerPass {
     private final ModuleRecord destination;
     private final Set<ModuleRecord> dependentModules;
 
-    PossibleMove(
-        Definition definition, ModuleRecord destination, Set<ModuleRecord> dependentModules) {
+    PossibleMove(Definition definition, ModuleRecord destination, Set<ModuleRecord> dependentModules) {
       checkState(definition.isUnconditional());
       this.definition = definition;
       this.destination = destination;
@@ -443,79 +514,62 @@ class CrossModuleCodeMotion implements CompilerPass {
 
     @Override
     public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("definition", definition)
-          .add("destination", destination)
-          .add("dependentModules", dependentModules)
-          .toString();
+      return MoreObjects.toStringHelper(this).add("definition", definition)
+          .add("destination", destination).add("dependentModules", dependentModules).toString();
     }
   }
 
-  private static final Ordering<PossibleMove> DEEPEST_MOVE_FIRST =
-      new Ordering<PossibleMove>() {
-        @Override
-        public int compare(PossibleMove left, PossibleMove right) {
-          checkNotNull(left);
-          checkNotNull(right);
-          if (left.equals(right)) {
-            return 0;
-          } else {
-            checkState(
-                !left.definition.equals(right.definition),
-                "Comparing two different moves for the same definition:\n%s\n%s",
-                left,
-                right);
-            // Deepest destination module first.
-            int result = -left.destination.compareAbsoluteDepth(right.destination);
-            if (result == 0) {
-              checkState(
-                  left.destination.equals(right.destination),
-                  "Different ModuleRecords have the same absolute depth:\n%s\nand\n%s",
-                  left,
-                  right);
-              // When moving 2 definitions to the same module, prefer to keep them in the same
-              // absolute order by moving the deepest one first.
-              result = -left.definition.compareAbsoluteDepth(right.definition);
-            }
-            return result;
-          }
+  private static final Ordering<PossibleMove> DEEPEST_MOVE_FIRST = new Ordering<PossibleMove>() {
+    @Override
+    public int compare(PossibleMove left, PossibleMove right) {
+      checkNotNull(left);
+      checkNotNull(right);
+      if (left.equals(right)) {
+        return 0;
+      } else {
+        checkState(!left.definition.equals(right.definition),
+            "Comparing two different moves for the same definition:\n%s\n%s", left, right);
+        // Deepest destination module first.
+        int result = -left.destination.compareAbsoluteDepth(right.destination);
+        if (result == 0) {
+          checkState(left.destination.equals(right.destination),
+              "Different ModuleRecords have the same absolute depth:\n%s\nand\n%s", left, right);
+          // When moving 2 definitions to the same module, prefer to keep them in the same
+          // absolute order by moving the deepest one first.
+          result = -left.definition.compareAbsoluteDepth(right.definition);
         }
-      };
+        return result;
+      }
+    }
+  };
 
-  private static final Ordering<Definition> DEEPEST_DEFINITION_FIRST =
-      new Ordering<Definition>() {
-        @Override
-        public int compare(Definition left, Definition right) {
-          checkNotNull(left);
-          checkNotNull(right);
-          if (left == right) {
-            return 0;
-          } else {
-            checkState(
-                left.definitionNode != right.definitionNode,
-                "Two definitions refer to the same node: %s and %s",
-                left,
-                right);
-            if (left.statement == right.statement) {
-              // Two definitions on the same statement.
-              // At least one of them must be conditional.
-              checkState(
-                  !(right.isUnconditional() && left.isUnconditional()),
-                  "Two unconditional definitions in the same statement: %s and %s",
-                  left,
-                  right);
-              // A statement containing any conditional definitions is immovable,
-              // so it doesn't matter which one we consider to be deeper than the other.
-              return 0;
-            } else {
-              final AbsoluteStatementDepth leftStatementDepth = left.statement.getAbsoluteDepth();
-              final AbsoluteStatementDepth rightStatementDepth = right.statement.getAbsoluteDepth();
-              // Invert comparison because we want deepest to come first.
-              return -leftStatementDepth.compareTo(rightStatementDepth);
-            }
-          }
+  private static final Ordering<Definition> DEEPEST_DEFINITION_FIRST = new Ordering<Definition>() {
+    @Override
+    public int compare(Definition left, Definition right) {
+      checkNotNull(left);
+      checkNotNull(right);
+      if (left == right) {
+        return 0;
+      } else {
+        checkState(left.definitionNode != right.definitionNode,
+            "Two definitions refer to the same node: %s and %s", left, right);
+        if (left.statement == right.statement) {
+          // Two definitions on the same statement.
+          // At least one of them must be conditional.
+          checkState(!(right.isUnconditional() && left.isUnconditional()),
+              "Two unconditional definitions in the same statement: %s and %s", left, right);
+          // A statement containing any conditional definitions is immovable,
+          // so it doesn't matter which one we consider to be deeper than the other.
+          return 0;
+        } else {
+          final AbsoluteStatementDepth leftStatementDepth = left.statement.getAbsoluteDepth();
+          final AbsoluteStatementDepth rightStatementDepth = right.statement.getAbsoluteDepth();
+          // Invert comparison because we want deepest to come first.
+          return -leftStatementDepth.compareTo(rightStatementDepth);
         }
-      };
+      }
+    }
+  };
 
   private boolean isUndefinedTypeofGuardReference(Node reference) {
     Node typeofReference = reference.getParent();
@@ -613,8 +667,8 @@ class CrossModuleCodeMotion implements CompilerPass {
           d.movability = DefinitionMovability.IMMOVABLE;
         }
       }
-      return new DefinitionMover(
-          movableDefinitions, definitionsForName, moduleRecordMap, moduleRecords);
+      return new DefinitionMover(movableDefinitions, definitionsForName, moduleRecordMap,
+          moduleRecords);
     }
 
     @Override
@@ -639,13 +693,12 @@ class CrossModuleCodeMotion implements CompilerPass {
         if (currentModuleRecord != null) {
           if (currentStatement == null) {
             // New global statement.
-            currentStatement =
-                new GlobalStatement(
-                    n, currentModuleRecord, currentModuleRecord.nextAppendStatementIndex++);
+            currentStatement = currentModuleRecord.appendNewStatementForNode(n);
             Optional<Definition> possibleDefinition = possibleGlobalDefinition(t.getScope(), n);
-            currentStatement.globalDefinition = possibleDefinition;
+            currentStatement.unconditionalDefinition = possibleDefinition;
             if (possibleDefinition.isPresent()) {
               addDefinitionForName(possibleDefinition.get());
+              currentStatement.containedDefinitions.add(possibleDefinition.get());
               allDefinitionsStack.push(possibleDefinition.get());
             }
           } else {
@@ -657,13 +710,9 @@ class CrossModuleCodeMotion implements CompilerPass {
               // Ignore conditional definitions that occur inside of an unconditional one for the
               // same name. There are known good cases for this, so we'll trust the developer not
               // to have done anything really wacky.
-              if (!currentStatement.globalDefinition.isPresent()) {
+              if (currentStatement.hasUnconditionalDefinitionForName(conditionalDefinition.varName)) {
                 addDefinitionForName(conditionalDefinition);
-              } else {
-                Definition unconditionalDefinition = currentStatement.globalDefinition.get();
-                if (!conditionalDefinition.varName.equals(unconditionalDefinition.varName)) {
-                  addDefinitionForName(conditionalDefinition);
-                }
+                currentStatement.containedDefinitions.add(conditionalDefinition);
               }
             }
           }
@@ -693,7 +742,7 @@ class CrossModuleCodeMotion implements CompilerPass {
           if (referencedDefinition.isPresent()) {
             if (!parentModuleCanSeeSymbolsDeclaredInChildren) {
               currentStatement.containedReferences.add(reference);
-              referencedDefinition.get().dependents.add(reference);
+              referencedDefinition.get().dependentsShallowestFirst.add(reference);
             } else {
               if (isUndefinedTypeofGuardReference(n)) {
                 return; // Ignore these special guard references.
@@ -707,7 +756,7 @@ class CrossModuleCodeMotion implements CompilerPass {
                 }
               } else {
                 currentStatement.containedReferences.add(reference);
-                referencedDefinition.get().dependents.add(reference);
+                referencedDefinition.get().dependentsShallowestFirst.add(reference);
               }
             }
           }
@@ -728,8 +777,8 @@ class CrossModuleCodeMotion implements CompilerPass {
       return definitions;
     }
 
-    private Optional<Definition> findReferencedDefinition(
-        String varName, GlobalStatement referringStatement) {
+    private Optional<Definition> findReferencedDefinition(String varName,
+        GlobalStatement referringStatement) {
       SortedSet<Definition> definitions = getDefinitionsForNameDeepestFirst(varName);
       ModuleRecord referringModule = referringStatement.moduleRecord;
       for (Definition d : definitions) {
@@ -750,36 +799,26 @@ class CrossModuleCodeMotion implements CompilerPass {
      * creates a new IncompleteGlobalDefinition to represent it.
      */
     private Optional<Definition> possibleGlobalDefinition(Scope scope, Node possibleDefinition) {
-      checkNotNull(currentModuleRecord);
       checkNotNull(currentStatement);
       if (scope.isGlobal() && possibleDefinition.isVar()) {
         checkState(possibleDefinition.hasOneChild(), "AST not normalized.");
         Node nameNode = possibleDefinition.getFirstChild();
         if (nameNode.hasChildren()) {
           // var NAME = VALUE;
-          return Optional.of(
-              createDefinition(
-                  DefinitionKind.VARIABLE_DECLARATION,
-                  nameNode.getString(),
-                  possibleDefinition,
-                  nameNode.getFirstChild()));
+          return Optional.of(createDefinition(DefinitionKind.VARIABLE_DECLARATION,
+              nameNode.getString(), possibleDefinition, nameNode.getFirstChild()));
         } else {
           // var NAME;
-          return Optional.of(
-              createDefinition(
-                  DefinitionKind.VARIABLE_DECLARATION, nameNode.getString(), possibleDefinition));
+          return Optional.of(createDefinition(DefinitionKind.VARIABLE_DECLARATION,
+              nameNode.getString(), possibleDefinition));
         }
       } else if (scope.isGlobal() && NodeUtil.isFunctionDeclaration(possibleDefinition)) {
         // function NAME() {}
         Node functionNode =
-            possibleDefinition.isFunction()
-                ? possibleDefinition
-                : possibleDefinition.getFirstChild();
-        return Optional.of(
-            createDefinition(
-                DefinitionKind.FUNCTION_DECLARATION,
-                functionNode.getFirstChild().getString(),
-                possibleDefinition));
+            possibleDefinition.isFunction() ? possibleDefinition : possibleDefinition
+                .getFirstChild();
+        return Optional.of(createDefinition(DefinitionKind.FUNCTION_DECLARATION, functionNode
+            .getFirstChild().getString(), possibleDefinition));
       } else if (NodeUtil.isExprAssign(possibleDefinition)) {
         Node assignNode = possibleDefinition.getFirstChild();
         Node nameNode = assignNode.getFirstChild();
@@ -812,18 +851,17 @@ class CrossModuleCodeMotion implements CompilerPass {
           String varName = relationship.subclassName;
           Var v = scope.getVar(varName);
           if (v != null && v.isGlobal()) {
-            return Optional.of(
-                createDefinition(DefinitionKind.INHERITANCE_SETUP, varName, possibleDefinition));
+            return Optional.of(createDefinition(DefinitionKind.INHERITANCE_SETUP, varName,
+                possibleDefinition));
           }
         }
       }
       return Optional.<Definition>absent();
     }
 
-    private Definition createDefinition(
-        DefinitionKind kind, String varName, Node node, final Node valueNode) {
-      return new Definition(
-          currentStatement, kind, nextDefinitionIndex++, node, varName, valueNode);
+    private Definition createDefinition(DefinitionKind kind, String varName, Node node,
+        final Node valueNode) {
+      return new Definition(currentStatement, kind, nextDefinitionIndex++, node, varName, valueNode);
     }
 
     private Definition createDefinition(final DefinitionKind kind, String varName, Node node) {
@@ -843,7 +881,7 @@ class CrossModuleCodeMotion implements CompilerPass {
     }
 
     private boolean canMoveValue(Node value) {
-      if (NodeUtil.isLiteralValue(value, /* includeFunctions */ true)) {
+      if (NodeUtil.isLiteralValue(value, /* includeFunctions */true)) {
         return true;
       } else if (value.isCall() && value.getFirstChild().isName()) {
         // Special case for stubs created by CrossModuleMethodMotion.
@@ -899,14 +937,12 @@ class CrossModuleCodeMotion implements CompilerPass {
   private static final class ModuleRecord {
     final int astIndex;
     final JSModule module;
-    final Set<ModuleRecord> requiredModuleRecords;
+    final Deque<GlobalStatement> statements = new ArrayDeque<>();
     int nextPrependStatementIndex = -1;
-    int nextAppendStatementIndex = 0;
 
-    ModuleRecord(int orderIndex, JSModule module, Set<ModuleRecord> requiredModuleRecords) {
+    ModuleRecord(int orderIndex, JSModule module) {
       this.astIndex = orderIndex;
       this.module = module;
-      this.requiredModuleRecords = requiredModuleRecords;
     }
 
     boolean isDeeperThan(ModuleRecord other) {
@@ -917,6 +953,39 @@ class CrossModuleCodeMotion implements CompilerPass {
       } else {
         return thisDepth > otherDepth;
       }
+    }
+
+    GlobalStatement appendNewStatementForNode(Node n) {
+      int statementIndex = statements.isEmpty() ? 0 : statements.getLast().modulePositionIndex + 1;
+      GlobalStatement newStatement = new GlobalStatement(n, this, statementIndex);
+      statements.add(newStatement);
+      return newStatement;
+    }
+
+    void prependStatement(GlobalStatement statement) {
+      statement.moduleRecord = this;
+      statement.modulePositionIndex =
+          statements.isEmpty() ? -1 : statements.getFirst().modulePositionIndex - 1;
+    }
+
+    Set<Definition> getContainedDefinitions() {
+      final Set<Definition> containedDefinitions = new HashSet<>();
+      for (GlobalStatement statement : statements) {
+        containedDefinitions.addAll(statement.containedDefinitions);
+      }
+      return containedDefinitions;
+    }
+
+    Set<Definition> getReferencedDefinitions() {
+      final Set<Definition> referencedDefinitions = new HashSet<>();
+      for (GlobalStatement s : statements) {
+        for (Reference r : s.containedReferences) {
+          if (r.referencedDefinition.isPresent()) {
+            referencedDefinitions.add(r.referencedDefinition.get());
+          }
+        }
+      }
+      return referencedDefinitions;
     }
 
     int compareAbsoluteDepth(ModuleRecord other) {
@@ -935,11 +1004,8 @@ class CrossModuleCodeMotion implements CompilerPass {
         return false;
       } else {
         ModuleRecord other = (ModuleRecord) o;
-        checkState(
-            this.module != other.module,
-            "Two ModuleRecords exist for the same module: %s and %s",
-            this,
-            other);
+        checkState(this.module != other.module,
+            "Two ModuleRecords exist for the same module: %s and %s", this, other);
         return false;
       }
     }
@@ -951,11 +1017,8 @@ class CrossModuleCodeMotion implements CompilerPass {
 
     @Override
     public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("module", module)
-          .add("depth", module.getDepth())
-          .add("orderIndex", astIndex)
-          .toString();
+      return MoreObjects.toStringHelper(this).add("module", module).add("depth", module.getDepth())
+          .add("orderIndex", astIndex).toString();
     }
   }
 
@@ -981,17 +1044,16 @@ class CrossModuleCodeMotion implements CompilerPass {
 
     @Override
     public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("moduleDepth", moduleDepth)
-          .add("astIndex", astIndex)
-          .toString();
+      return MoreObjects.toStringHelper(this).add("moduleDepth", moduleDepth)
+          .add("astIndex", astIndex).toString();
     }
   }
 
   private static final class GlobalStatement {
     final Node node;
     final Set<Reference> containedReferences = new HashSet<>();
-    Optional<Definition> globalDefinition;
+    final Set<Definition> containedDefinitions = new HashSet<>();
+    Optional<Definition> unconditionalDefinition;
     ModuleRecord moduleRecord;
     int modulePositionIndex;
 
@@ -999,6 +1061,11 @@ class CrossModuleCodeMotion implements CompilerPass {
       this.node = node;
       this.moduleRecord = moduleRecord;
       this.modulePositionIndex = modulePositionIndex;
+    }
+
+    boolean hasUnconditionalDefinitionForName(String varName) {
+      return unconditionalDefinition.isPresent()
+          && unconditionalDefinition.get().varName.equals(varName);
     }
 
     public boolean isAbove(GlobalStatement other) {
@@ -1016,11 +1083,10 @@ class CrossModuleCodeMotion implements CompilerPass {
     @Override
     public String toString() {
       final ToStringHelper toStringHelper =
-          MoreObjects.toStringHelper(this)
-              .add("moduleRecord", moduleRecord)
+          MoreObjects.toStringHelper(this).add("moduleRecord", moduleRecord)
               .add("modulePositionIndex", modulePositionIndex);
-      if (globalDefinition.isPresent()) {
-        toStringHelper.add("defines", globalDefinition.get().varName);
+      if (unconditionalDefinition.isPresent()) {
+        toStringHelper.add("defines", unconditionalDefinition.get().varName);
       } else {
         toStringHelper.add("defines", "<nothing>");
       }
@@ -1052,18 +1118,17 @@ class CrossModuleCodeMotion implements CompilerPass {
 
     @Override
     public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("absoluteModuleDepth", absoluteModuleDepth)
-          .add("modulePositionIndex", modulePositionIndex)
-          .toString();
+      return MoreObjects.toStringHelper(this).add("absoluteModuleDepth", absoluteModuleDepth)
+          .add("modulePositionIndex", modulePositionIndex).toString();
     }
   }
 
   /**
    * Represents a statement that defines a global variable.
-   *
-   * <p>This could be a partial definition. e.g. all of the following statements are considered to
-   * be definitions for `F`. <code><pre>
+   * 
+   * <p>
+   * This could be a partial definition. e.g. all of the following statements are considered to be
+   * definitions for `F`. <code><pre>
    *   function F() {};
    *   F.prototype.a = 1;
    *   F.prototype.b = function() {};
@@ -1082,18 +1147,14 @@ class CrossModuleCodeMotion implements CompilerPass {
     // or the special-case class defining method calls.
     final Optional<Node> assignedValue;
     // References that depend on this global definition.
-    final SortedSet<Reference> dependents = new TreeSet<Reference>(SHALLOWEST_REFERENCE_FIRST);
+    final SortedSet<Reference> dependentsShallowestFirst = new TreeSet<Reference>(
+        SHALLOWEST_REFERENCE_FIRST);
     final Set<Reference> unguardedInstanceOfReferences = new HashSet<>();
     final ModuleRecord originalModuleRecord;
     DefinitionMovability movability;
 
-    Definition(
-        GlobalStatement statement,
-        DefinitionKind kind,
-        int orderIndex,
-        Node definitionNode,
-        String varName,
-        Optional<Node> assignedValue) {
+    Definition(GlobalStatement statement, DefinitionKind kind, int orderIndex, Node definitionNode,
+        String varName, Optional<Node> assignedValue) {
       this.statement = statement;
       this.originalModuleRecord = statement.moduleRecord;
       this.kind = kind;
@@ -1104,22 +1165,13 @@ class CrossModuleCodeMotion implements CompilerPass {
       this.movability = DefinitionMovability.UNKNOWN;
     }
 
-    Definition(
-        GlobalStatement statement,
-        DefinitionKind kind,
-        int orderIndex,
-        Node definitionNode,
+    Definition(GlobalStatement statement, DefinitionKind kind, int orderIndex, Node definitionNode,
         String varName) {
       this(statement, kind, orderIndex, definitionNode, varName, Optional.<Node>absent());
     }
 
-    Definition(
-        GlobalStatement statement,
-        DefinitionKind kind,
-        int orderIndex,
-        Node definitionNode,
-        String varName,
-        Node assignedValue) {
+    Definition(GlobalStatement statement, DefinitionKind kind, int orderIndex, Node definitionNode,
+        String varName, Node assignedValue) {
       this(statement, kind, orderIndex, definitionNode, varName, Optional.of(assignedValue));
     }
 
@@ -1141,12 +1193,8 @@ class CrossModuleCodeMotion implements CompilerPass {
 
     @Override
     public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("varName", varName)
-          .add("orderIndex", orderIndex)
-          .add("originalModuleRecord", originalModuleRecord)
-          .add("statment", statement)
-          .toString();
+      return MoreObjects.toStringHelper(this).add("varName", varName).add("orderIndex", orderIndex)
+          .add("originalModuleRecord", originalModuleRecord).add("statment", statement).toString();
     }
   }
 
@@ -1159,9 +1207,7 @@ class CrossModuleCodeMotion implements CompilerPass {
   }
 
   private static enum DefinitionMovability {
-    UNKNOWN,
-    MOVABLE,
-    IMMOVABLE;
+    UNKNOWN, MOVABLE, IMMOVABLE;
   }
 
   /** Represents all types of references to global variables. */
@@ -1174,8 +1220,8 @@ class CrossModuleCodeMotion implements CompilerPass {
     // dependencies.
     Optional<Definition> referencedDefinition;
 
-    Reference(
-        GlobalStatement statement, Node referenceNode, Optional<Definition> referencedDefinition) {
+    Reference(GlobalStatement statement, Node referenceNode,
+        Optional<Definition> referencedDefinition) {
       this.statement = checkNotNull(statement);
       this.referenceNode = checkNotNull(referenceNode);
       this.referencedDefinition = checkNotNull(referencedDefinition);
@@ -1191,23 +1237,20 @@ class CrossModuleCodeMotion implements CompilerPass {
 
     @Override
     public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("varName", referenceNode.toString())
-          .add("statement", statement)
-          .toString();
+      return MoreObjects.toStringHelper(this).add("varName", referenceNode.toString())
+          .add("statement", statement).toString();
     }
   }
 
-  private static final Ordering<Reference> SHALLOWEST_REFERENCE_FIRST =
-      new Ordering<Reference>() {
+  private static final Ordering<Reference> SHALLOWEST_REFERENCE_FIRST = new Ordering<Reference>() {
 
-        @Override
-        public int compare(Reference left, Reference right) {
-          checkNotNull(left);
-          checkNotNull(right);
-          return left.statement.getAbsoluteDepth().compareTo(right.statement.getAbsoluteDepth());
-        }
-      };
+    @Override
+    public int compare(Reference left, Reference right) {
+      checkNotNull(left);
+      checkNotNull(right);
+      return left.statement.getAbsoluteDepth().compareTo(right.statement.getAbsoluteDepth());
+    }
+  };
 
   private boolean isNonExportedGlobalName(String name, Scope scope) {
     Var v = scope.getVar(name);
