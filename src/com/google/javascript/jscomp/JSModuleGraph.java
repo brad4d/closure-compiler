@@ -58,17 +58,6 @@ import java.util.Set;
  */
 public final class JSModuleGraph {
 
-  private static final Function<BitSet, Integer> BITSET_CARDINALITY =
-      new Function<BitSet, Integer>() {
-        @Override
-        public Integer apply(BitSet input) {
-          return checkNotNull(input).cardinality();
-        }
-      };
-
-  private static final Ordering<BitSet> CARDINALITY_ORDER =
-      Ordering.natural().onResultOf(BITSET_CARDINALITY);
-
   /**
    * Modules listed in dependency order. (i.e. The order they occur in the AST.
    *
@@ -344,38 +333,6 @@ public final class JSModuleGraph {
       builder.add(modules.get(i));
     }
     return builder.build();
-  }
-
-  /**
-   * Replaces any files that are found multiple times with a single instance in the closest parent
-   * module that is common to all modules where it appears.
-   *
-   * <p>JSCompiler normally errors if you attempt to compile modules containing the same file. This
-   * method can be used to remove duplicates before compiling to avoid such an error.
-   */
-  public void coalesceDuplicateFiles() {
-    Multimap<String, JSModule> fileRefs = LinkedHashMultimap.create();
-    for (JSModule module : modules) {
-      for (CompilerInput jsFile : module.getInputs()) {
-        fileRefs.put(jsFile.getName(), module);
-      }
-    }
-
-    for (String path : fileRefs.keySet()) {
-      Collection<JSModule> refModules = fileRefs.get(path);
-      if (refModules.size() > 1) {
-        JSModule depModule = getDeepestCommonDependencyInclusive(refModules);
-        CompilerInput file = refModules.iterator().next().getByName(path);
-        for (JSModule module : refModules) {
-          if (module != depModule) {
-            module.removeByName(path);
-          }
-        }
-        if (!refModules.contains(depModule)) {
-          depModule.add(file);
-        }
-      }
-    }
   }
 
   /**
