@@ -57,13 +57,6 @@ import com.google.javascript.jscomp.parsing.parser.util.format.SimpleFormat;
  */
 public final class JSModuleGraph {
 
-  /**
-   * Modules listed in dependency order. (i.e. The order they occur in the AST.
-   *
-   * <p>All modules are given a graph index which equals their position in this list.
-   */
-  private final List<JSModule> modules;
-
   private final Map<String, Integer> moduleIndexMap;
   private final ImmutableList<ModuleLinkage> moduleLinkages;
   
@@ -114,12 +107,11 @@ public final class JSModuleGraph {
       moduleLinkagesBuilder.add(new ModuleLinkage(m, numModules));
     }
     moduleLinkages = moduleLinkagesBuilder.build();
-    modules = ImmutableList.copyOf(modulesInDepOrder);
     moduleIndexMap = new HashMap<>();
     modulesByDepth = new ArrayList<>();
 
-    for (int i = 0; i < modules.size(); i++) {
-      final JSModule module = modules.get(i);
+    for (int i = 0; i < numModules; i++) {
+      final JSModule module = moduleLinkages.get(i).module;
       checkState(!moduleIndexMap.containsKey(module.getName()), "Module already added to graph: %s", module);
       moduleIndexMap.put(module.getName(), i);
       int depth = 0;
@@ -153,21 +145,25 @@ public final class JSModuleGraph {
 
   /** Gets an iterable over all modules in dependency order. */
   Iterable<JSModule> getAllModules() {
-    return modules;
+	ImmutableList.Builder<JSModule> builder = ImmutableList.builder();
+	for (ModuleLinkage l : moduleLinkages) {
+	  builder.add(l.module);
+	}
+    return builder.build();
   }
 
   /** Gets all modules indexed by name. */
   Map<String, JSModule> getModulesByName() {
     Map<String, JSModule> result = new HashMap<>();
-    for (JSModule m : modules) {
-      result.put(m.getName(), m);
+    for (ModuleLinkage m : moduleLinkages) {
+      result.put(m.module.getName(), m.module);
     }
     return result;
   }
 
   /** Gets the total number of modules. */
   int getModuleCount() {
-    return modules.size();
+    return moduleLinkages.size();
   }
 
   /** Gets the root module. */
@@ -185,7 +181,8 @@ public final class JSModuleGraph {
   @GwtIncompatible("com.google.gson")
   JsonArray toJson() {
     JsonArray modules = new JsonArray();
-    for (JSModule module : getAllModules()) {
+    for (ModuleLinkage l : moduleLinkages) {
+      final JSModule module = l.module;
       JsonObject node = new JsonObject();
       node.add("name", new JsonPrimitive(module.getName()));
       JsonArray deps = new JsonArray();
@@ -233,9 +230,9 @@ public final class JSModuleGraph {
     if (moduleSet.size() == 1) {
       return Iterables.getOnlyElement(moduleSet);
     }
-    final BitSet commonDeps = new BitSet(modules.size());
+    final BitSet commonDeps = new BitSet(getModuleCount());
     // All modules included initially as starting point for repeated intersections.
-    commonDeps.set(0, modules.size() - 1);
+    commonDeps.set(0, getModuleCount() - 1);
     for (JSModule m : moduleSet) {
       final int moduleIndex = moduleIndexMap.get(m.getName());
       final BitSet thisModuleAndItsDependencies =
@@ -246,7 +243,7 @@ public final class JSModuleGraph {
     }
     JSModule resultModule = null;
     for (int i = commonDeps.nextSetBit(0); i >= 0; i = commonDeps.nextSetBit(i + 1)) {
-      JSModule m = modules.get(i);
+      JSModule m = moduleLinkages.get(i).module;
       if (resultModule == null) {
         resultModule = m;
       } else {
@@ -342,7 +339,7 @@ public final class JSModuleGraph {
     int mIndex = moduleIndexMap.get(m.getName());
 	BitSet dependencies = checkNotNull(moduleLinkages.get(mIndex)).requiredModuleIndices;
     for (int i = dependencies.nextSetBit(0); i >= 0; i = dependencies.nextSetBit(i + 1)) {
-      builder.add(modules.get(i));
+      builder.add(moduleLinkages.get(i).module);
     }
     return builder.build();
   }
@@ -400,8 +397,8 @@ public final class JSModuleGraph {
 
     // Clear the modules of their inputs. This also nulls out
     // the input's reference to its module.
-    for (JSModule module : getAllModules()) {
-      module.removeAll();
+    for (ModuleLinkage l : moduleLinkages) {
+      l.module.removeAll();
     }
 
     // Figure out which sources *must* be in each module, or in one
@@ -432,8 +429,8 @@ public final class JSModuleGraph {
 
     // Now, generate the sorted result.
     ImmutableList.Builder<CompilerInput> result = ImmutableList.builder();
-    for (JSModule module : getAllModules()) {
-      result.addAll(module.getInputs());
+    for (ModuleLinkage l : moduleLinkages) {
+      result.addAll(l.module.getInputs());
     }
 
     return result.build();
@@ -491,7 +488,8 @@ public final class JSModuleGraph {
   @SuppressWarnings("unused")
   LinkedDirectedGraph<JSModule, String> toGraphvizGraph() {
     LinkedDirectedGraph<JSModule, String> graphViz = LinkedDirectedGraph.create();
-    for (JSModule module : getAllModules()) {
+    for (ModuleLinkage l : moduleLinkages) {
+      final JSModule module = l.module;
       graphViz.createNode(module);
       for (JSModule dep : module.getDependencies()) {
         graphViz.createNode(dep);
