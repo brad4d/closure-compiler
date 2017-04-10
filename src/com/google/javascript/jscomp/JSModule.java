@@ -16,10 +16,6 @@
 
 package com.google.javascript.jscomp;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkState;
-
-import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -51,11 +47,6 @@ public final class JSModule implements DependencyInfo, Serializable {
   /** Modules that this module depends on */
   private final List<JSModule> deps = new ArrayList<>();
 
-  /**
-   * Indicates the position of this module in the total module order.
-   * Will be set to a non-negative value by the JSModuleGraph constructor.
-   */
-  private int graphIndex = -1;
   private int depth;
   /**
    * Creates an instance.
@@ -245,11 +236,7 @@ public final class JSModule implements DependencyInfo, Serializable {
   /** Returns the module name (primarily for debugging). */
   @Override
   public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .add("name", name)
-        .add("graphIndex", graphIndex)
-        .add("depth", depth)
-        .toString();
+    return name;
   }
 
   /**
@@ -276,17 +263,6 @@ public final class JSModule implements DependencyInfo, Serializable {
     List<CompilerInput> sortedList = new Es6SortedDependencies<>(inputs).getSortedList();
     inputs.clear();
     inputs.addAll(sortedList);
-  }
-
-  public JSModule setGraphIndex(int graphIndex) {
-    checkArgument(graphIndex >= 0, "Invalid graph index value: %s", graphIndex);
-    checkState(this.graphIndex == -1, "Graph index set more than once.");
-    this.graphIndex = graphIndex;
-    return this;
-  }
-
-  public int getGraphIndex() {
-    return graphIndex;
   }
 
   /**
