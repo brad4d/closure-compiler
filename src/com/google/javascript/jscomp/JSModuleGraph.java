@@ -19,25 +19,6 @@ package com.google.javascript.jscomp;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
-import com.google.common.annotations.GwtIncompatible;
-import com.google.common.base.Function;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.LinkedHashMultimap;
-import com.google.common.collect.LinkedListMultimap;
-import com.google.common.collect.ListMultimap;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.Ordering;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
-import com.google.javascript.jscomp.deps.Es6SortedDependencies;
-import com.google.javascript.jscomp.deps.SortedDependencies;
-import com.google.javascript.jscomp.deps.SortedDependencies.MissingProvideException;
-import com.google.javascript.jscomp.graph.LinkedDirectedGraph;
-import com.google.javascript.jscomp.parsing.parser.util.format.SimpleFormat;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
@@ -48,6 +29,24 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.LinkedListMultimap;
+import com.google.common.collect.ListMultimap;
+import com.google.common.collect.Ordering;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
+import com.google.javascript.jscomp.deps.Es6SortedDependencies;
+import com.google.javascript.jscomp.deps.SortedDependencies;
+import com.google.javascript.jscomp.deps.SortedDependencies.MissingProvideException;
+import com.google.javascript.jscomp.graph.LinkedDirectedGraph;
+import com.google.javascript.jscomp.parsing.parser.util.format.SimpleFormat;
 
 /**
  * A {@link JSModule} dependency graph that assigns a depth to each module and can answer
@@ -65,16 +64,18 @@ public final class JSModuleGraph {
    */
   private final List<JSModule> modules;
 
-  /**
-   * allDependencies[i] = set of all modules (indices, actually) that module i depends on directly
-   * or transitively.
-   */
-  private final BitSet allDependencies[];
-  /**
-   * allDependencies[i] = set of all modules (indices, actually) that depend on module i directly or
-   * transitively.
-   */
-  private final BitSet allDependents[];
+  private final Map<String, Integer> moduleIndexMap;
+  private final ModuleLinkage moduleLinkages[];
+  
+  private static final class ModuleLinkage {
+	  private final BitSet requiredModuleIndices;
+	  private final BitSet dependentModuleIndices;
+	  
+	  ModuleLinkage(int totalModules) {
+		this.requiredModuleIndices = new BitSet(totalModules);
+		this.dependentModuleIndices = new BitSet(totalModules);
+	  }
+  }
 
   /**
    * Lists of modules at each depth. <code>modulesByDepth.get(3)</code> is a list of the modules at
@@ -86,7 +87,8 @@ public final class JSModuleGraph {
       new Function<JSModule, Integer>() {
         @Override
         public Integer apply(JSModule input) {
-          return allDependents[checkNotNull(input).getGraphIndex()].cardinality();
+          int moduleIndex = moduleIndexMap.get(checkNotNull(input).getName());
+		return moduleLinkages[moduleIndex].dependentModuleIndices.cardinality();
         }
       };
   private final Ordering<JSModule> fewestDependentsFirst =
@@ -105,18 +107,19 @@ public final class JSModuleGraph {
         modulesInDepOrder.size() == new HashSet<>(modulesInDepOrder).size(),
         "Found duplicate modules");
     modules = ImmutableList.copyOf(modulesInDepOrder);
+    moduleIndexMap = new HashMap<>();
+    moduleLinkages = new ModuleLinkage[modules.size()];
     modulesByDepth = new ArrayList<>();
-    allDependencies = new BitSet[modules.size()];
-    allDependents = new BitSet[modules.size()];
 
     for (int i = 0; i < modules.size(); i++) {
       final JSModule module = modules.get(i);
-      checkState(module.getGraphIndex() < 0, "Module already added to graph: %s", module);
-      module.setGraphIndex(i);
-      allDependencies[i] = new BitSet(modules.size());
-      allDependents[i] = new BitSet(modules.size());
+      checkState(!moduleIndexMap.containsKey(module.getName()), "Module already added to graph: %s", module);
+      moduleIndexMap.put(module.getName(), i);
+      ModuleLinkage moduleLinkage = new ModuleLinkage(modules.size());
+      moduleLinkages[i] = moduleLinkage;
       int depth = 0;
       for (JSModule dep : module.getAllDependencies()) {
+    	int depIndex = moduleIndexMap.get(dep.getName());
         int depDepth = dep.getDepth();
         // JSModule constructor initializes depth to -1, so a value less than 0 indicates
         // we haven't seen it yet to set its depth.
@@ -131,8 +134,8 @@ public final class JSModuleGraph {
         // This module is one level deeper than the deepest module it depends on.
         depth = Math.max(depth, depDepth + 1);
 
-        allDependencies[i].set(dep.getGraphIndex());
-        allDependents[dep.getGraphIndex()].set(i);
+        moduleLinkage.requiredModuleIndices.set(depIndex);
+        moduleLinkages[depIndex].dependentModuleIndices.set(i);
       }
 
       module.setDepth(depth);
@@ -205,7 +208,9 @@ public final class JSModuleGraph {
    * itself, as that dependency would be cyclic.
    */
   public boolean dependsOn(JSModule src, JSModule m) {
-    return allDependencies[src.getGraphIndex()].get(m.getGraphIndex());
+    int srcIndex = moduleIndexMap.get(src.getName());
+	int mIndex = moduleIndexMap.get(m.getName());
+	return moduleLinkages[srcIndex].requiredModuleIndices.get(mIndex);
   }
 
   /**
@@ -227,8 +232,9 @@ public final class JSModuleGraph {
     // All modules included initially as starting point for repeated intersections.
     commonDeps.set(0, modules.size() - 1);
     for (JSModule m : moduleSet) {
-      final int moduleIndex = m.getGraphIndex();
-      final BitSet thisModuleAndItsDependencies = (BitSet) allDependencies[moduleIndex].clone();
+      final int moduleIndex = moduleIndexMap.get(m.getName());
+      final BitSet thisModuleAndItsDependencies =
+    		  (BitSet) moduleLinkages[moduleIndex].requiredModuleIndices.clone();
       thisModuleAndItsDependencies.set(moduleIndex);
       commonDeps.and(thisModuleAndItsDependencies);
       checkState(!commonDeps.isEmpty(), "No common dependency found for %s", moduleSet);
@@ -328,7 +334,8 @@ public final class JSModuleGraph {
   /** Returns the transitive dependencies of the module. */
   private ImmutableSet<JSModule> getTransitiveDeps(JSModule m) {
     ImmutableSet.Builder<JSModule> builder = ImmutableSet.builder();
-    BitSet dependencies = checkNotNull(allDependencies[m.getGraphIndex()]);
+    int mIndex = moduleIndexMap.get(m.getName());
+	BitSet dependencies = checkNotNull(moduleLinkages[mIndex]).requiredModuleIndices;
     for (int i = dependencies.nextSetBit(0); i >= 0; i = dependencies.nextSetBit(i + 1)) {
       builder.add(modules.get(i));
     }
