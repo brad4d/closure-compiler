@@ -93,8 +93,6 @@ public final class JSModuleGraph {
    */
   private final List<List<JSModule>> modulesByDepth;
 
-  private final Map<String, Long> childCountForModuleName = new HashMap<>();
-
   private final Function<JSModule, Integer> numberOfDependents =
       new Function<JSModule, Integer>() {
         @Override
@@ -129,7 +127,6 @@ public final class JSModuleGraph {
       allDependencies[i] = new BitSet(modules.size());
       allDependents[i] = new BitSet(modules.size());
       int depth = 0;
-      childCountForModuleName.put(module.getName(), 0L);
       for (JSModule dep : module.getAllDependencies()) {
         int depDepth = dep.getDepth();
         // JSModule constructor initializes depth to -1, so a value less than 0 indicates
@@ -147,10 +144,6 @@ public final class JSModuleGraph {
 
         allDependencies[i].set(dep.getGraphIndex());
         allDependents[dep.getGraphIndex()].set(i);
-        // Add this module to the count of those that depend on dep.
-        final String depName = dep.getName();
-        long count = childCountForModuleName.get(depName);
-        childCountForModuleName.put(depName, count + 1);
       }
 
       module.setDepth(depth);
