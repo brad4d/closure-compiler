@@ -65,13 +65,15 @@ public final class JSModuleGraph {
   private final List<JSModule> modules;
 
   private final Map<String, Integer> moduleIndexMap;
-  private final ModuleLinkage moduleLinkages[];
+  private final ImmutableList<ModuleLinkage> moduleLinkages;
   
   private static final class ModuleLinkage {
+	  private final JSModule module;
 	  private final BitSet requiredModuleIndices;
 	  private final BitSet dependentModuleIndices;
 	  
-	  ModuleLinkage(int totalModules) {
+	  ModuleLinkage(JSModule module, int totalModules) {
+		this.module = module;
 		this.requiredModuleIndices = new BitSet(totalModules);
 		this.dependentModuleIndices = new BitSet(totalModules);
 	  }
@@ -88,7 +90,7 @@ public final class JSModuleGraph {
         @Override
         public Integer apply(JSModule input) {
           int moduleIndex = moduleIndexMap.get(checkNotNull(input).getName());
-		return moduleLinkages[moduleIndex].dependentModuleIndices.cardinality();
+		return moduleLinkages.get(moduleIndex).dependentModuleIndices.cardinality();
         }
       };
   private final Ordering<JSModule> fewestDependentsFirst =
@@ -106,17 +108,20 @@ public final class JSModuleGraph {
     Preconditions.checkState(
         modulesInDepOrder.size() == new HashSet<>(modulesInDepOrder).size(),
         "Found duplicate modules");
+    int numModules = modulesInDepOrder.size();
+    ImmutableList.Builder<ModuleLinkage> moduleLinkagesBuilder = ImmutableList.builder();
+    for (JSModule m : modulesInDepOrder) {
+      moduleLinkagesBuilder.add(new ModuleLinkage(m, numModules));
+    }
+    moduleLinkages = moduleLinkagesBuilder.build();
     modules = ImmutableList.copyOf(modulesInDepOrder);
     moduleIndexMap = new HashMap<>();
-    moduleLinkages = new ModuleLinkage[modules.size()];
     modulesByDepth = new ArrayList<>();
 
     for (int i = 0; i < modules.size(); i++) {
       final JSModule module = modules.get(i);
       checkState(!moduleIndexMap.containsKey(module.getName()), "Module already added to graph: %s", module);
       moduleIndexMap.put(module.getName(), i);
-      ModuleLinkage moduleLinkage = new ModuleLinkage(modules.size());
-      moduleLinkages[i] = moduleLinkage;
       int depth = 0;
       for (JSModule dep : module.getAllDependencies()) {
     	int depIndex = moduleIndexMap.get(dep.getName());
@@ -134,8 +139,8 @@ public final class JSModuleGraph {
         // This module is one level deeper than the deepest module it depends on.
         depth = Math.max(depth, depDepth + 1);
 
-        moduleLinkage.requiredModuleIndices.set(depIndex);
-        moduleLinkages[depIndex].dependentModuleIndices.set(i);
+        moduleLinkages.get(i).requiredModuleIndices.set(depIndex);
+        moduleLinkages.get(depIndex).dependentModuleIndices.set(i);
       }
 
       module.setDepth(depth);
@@ -210,7 +215,7 @@ public final class JSModuleGraph {
   public boolean dependsOn(JSModule src, JSModule m) {
     int srcIndex = moduleIndexMap.get(src.getName());
 	int mIndex = moduleIndexMap.get(m.getName());
-	return moduleLinkages[srcIndex].requiredModuleIndices.get(mIndex);
+	return moduleLinkages.get(srcIndex).requiredModuleIndices.get(mIndex);
   }
 
   /**
@@ -234,7 +239,7 @@ public final class JSModuleGraph {
     for (JSModule m : moduleSet) {
       final int moduleIndex = moduleIndexMap.get(m.getName());
       final BitSet thisModuleAndItsDependencies =
-    		  (BitSet) moduleLinkages[moduleIndex].requiredModuleIndices.clone();
+    		  (BitSet) moduleLinkages.get(moduleIndex).requiredModuleIndices.clone();
       thisModuleAndItsDependencies.set(moduleIndex);
       commonDeps.and(thisModuleAndItsDependencies);
       checkState(!commonDeps.isEmpty(), "No common dependency found for %s", moduleSet);
@@ -335,7 +340,7 @@ public final class JSModuleGraph {
   private ImmutableSet<JSModule> getTransitiveDeps(JSModule m) {
     ImmutableSet.Builder<JSModule> builder = ImmutableSet.builder();
     int mIndex = moduleIndexMap.get(m.getName());
-	BitSet dependencies = checkNotNull(moduleLinkages[mIndex]).requiredModuleIndices;
+	BitSet dependencies = checkNotNull(moduleLinkages.get(mIndex)).requiredModuleIndices;
     for (int i = dependencies.nextSetBit(0); i >= 0; i = dependencies.nextSetBit(i + 1)) {
       builder.add(modules.get(i));
     }
