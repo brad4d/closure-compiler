@@ -60,19 +60,19 @@ public final class JSModuleGraph {
 
   private final ImmutableList<ModuleLinkage> moduleLinkages;
   private final ImmutableMap<String, ModuleLinkage> moduleNameToLinkage;
-  
+
   private static final class ModuleLinkage {
-	  private final JSModule module;
-	  private final int moduleIndex;
-	  private final BitSet requiredModuleIndices;
-	  private final BitSet dependentModuleIndices;
-	  
-	  ModuleLinkage(JSModule module, int moduleIndex, int totalModules) {
-		this.module = module;
-		this.moduleIndex = moduleIndex;
-		this.requiredModuleIndices = new BitSet(totalModules);
-		this.dependentModuleIndices = new BitSet(totalModules);
-	  }
+      private final JSModule module;
+      private final int moduleIndex;
+      private final BitSet requiredModuleIndices;
+      private final BitSet dependentModuleIndices;
+
+      ModuleLinkage(JSModule module, int moduleIndex, int totalModules) {
+        this.module = module;
+        this.moduleIndex = moduleIndex;
+        this.requiredModuleIndices = new BitSet(totalModules);
+        this.dependentModuleIndices = new BitSet(totalModules);
+      }
   }
 
   /**
@@ -86,7 +86,7 @@ public final class JSModuleGraph {
         @Override
         public Integer apply(JSModule input) {
           ModuleLinkage linkage = moduleNameToLinkage.get(checkNotNull(input).getName());
-		  return linkage.dependentModuleIndices.cardinality();
+          return linkage.dependentModuleIndices.cardinality();
         }
       };
   private final Ordering<JSModule> fewestDependentsFirst =
@@ -110,8 +110,8 @@ public final class JSModuleGraph {
     for (int i = 0; i < numModules; ++i) {
       JSModule m = modulesInDepOrder.get(i);
       ModuleLinkage linkage = new ModuleLinkage(m, i, numModules);
-	  moduleLinkagesBuilder.add(linkage);
-	  moduleNameToLinkageBuilder.put(m.getName(), linkage);
+      moduleLinkagesBuilder.add(linkage);
+      moduleNameToLinkageBuilder.put(m.getName(), linkage);
     }
     moduleLinkages = moduleLinkagesBuilder.build();
     moduleNameToLinkage = moduleNameToLinkageBuilder.build();
@@ -122,7 +122,7 @@ public final class JSModuleGraph {
       final JSModule module = moduleLinkages.get(i).module;
       int depth = 0;
       for (JSModule dep : module.getAllDependencies()) {
-    	ModuleLinkage depLinkage = moduleNameToLinkage.get(dep.getName());
+        ModuleLinkage depLinkage = moduleNameToLinkage.get(dep.getName());
         int depDepth = dep.getDepth();
         // JSModule constructor initializes depth to -1, so a value less than 0 indicates
         // we haven't seen it yet to set its depth.
@@ -151,10 +151,10 @@ public final class JSModuleGraph {
 
   /** Gets an iterable over all modules in dependency order. */
   Iterable<JSModule> getAllModules() {
-	ImmutableList.Builder<JSModule> builder = ImmutableList.builder();
-	for (ModuleLinkage l : moduleLinkages) {
-	  builder.add(l.module);
-	}
+    ImmutableList.Builder<JSModule> builder = ImmutableList.builder();
+    for (ModuleLinkage l : moduleLinkages) {
+      builder.add(l.module);
+    }
     return builder.build();
   }
 
@@ -218,7 +218,7 @@ public final class JSModuleGraph {
   public boolean dependsOn(JSModule src, JSModule m) {
     ModuleLinkage srcLinkage = moduleNameToLinkage.get(src.getName());
     ModuleLinkage mLinkage = moduleNameToLinkage.get(m.getName());
-	return srcLinkage.requiredModuleIndices.get(mLinkage.moduleIndex);
+    return srcLinkage.requiredModuleIndices.get(mLinkage.moduleIndex);
   }
 
   /**
@@ -242,7 +242,7 @@ public final class JSModuleGraph {
     for (JSModule m : moduleSet) {
       final ModuleLinkage mLinkage = moduleNameToLinkage.get(m.getName());
       final BitSet thisModuleAndItsDependencies =
-    		  (BitSet) mLinkage.requiredModuleIndices.clone();
+              (BitSet) mLinkage.requiredModuleIndices.clone();
       thisModuleAndItsDependencies.set(mLinkage.moduleIndex);
       commonDeps.and(thisModuleAndItsDependencies);
       checkState(!commonDeps.isEmpty(), "No common dependency found for %s", moduleSet);
@@ -343,10 +343,10 @@ public final class JSModuleGraph {
   private ImmutableSet<JSModule> getTransitiveDeps(JSModule m) {
     ImmutableSet.Builder<JSModule> builder = ImmutableSet.builder();
     ModuleLinkage mLinkage = moduleNameToLinkage.get(m.getName());
-	BitSet dependencies = mLinkage.requiredModuleIndices;
+    BitSet dependencies = mLinkage.requiredModuleIndices;
     for (int i = dependencies.nextSetBit(0); i >= 0; i = dependencies.nextSetBit(i + 1)) {
       ModuleLinkage depLinkage = moduleLinkages.get(i);
-	  builder.add(depLinkage.module);
+      builder.add(depLinkage.module);
     }
     return builder.build();
   }
